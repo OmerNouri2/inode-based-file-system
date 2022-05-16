@@ -1,0 +1,56 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "C++ Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/kernel/kernel",
+            "miDebuggerServerAddress": "localhost:25000",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}/kernel",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb-multiarch",
+            "setupCommands":[
+                {
+                    "description": "force riscv architecture",
+                    "text": "set architecture riscv:rv64",
+                },
+            ],
+            "preLaunchTask": "run-gdb-backend-xv6",
+        },
+        {
+            "name": "(gdb) Attach",
+            "type": "cppdbg",
+            "request": "attach",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/kernel/kernel",
+            "MIMode": "gdb-multiarch",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+
+        {
+            "name": "Launch xv6",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/make",
+            "args": ["qemu"],
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+        }
+
+    ]
+}
