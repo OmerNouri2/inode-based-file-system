@@ -25,32 +25,5 @@
             ],
             "preLaunchTask": "run-gdb-backend-xv6",
         },
-        {
-            "name": "(gdb) Attach",
-            "type": "cppdbg",
-            "request": "attach",
-            "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/kernel/kernel",
-            "MIMode": "gdb-multiarch",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                }
-            ]
-        },
-
-        {
-            "name": "Launch xv6",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "/usr/bin/make",
-            "args": ["qemu"],
-            "cwd": "${fileDirname}",
-            "environment": [],
-            "externalConsole": false,
-        }
-
     ]
 }
