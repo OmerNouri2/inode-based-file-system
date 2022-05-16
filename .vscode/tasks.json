@@ -33,10 +33,9 @@
 				"background": {
 					"activeOnStart": true,
 					"beginsPattern": ".",
-					"endsPattern": "."
+					"endsPattern": "Now run \\'gdb\\'"
 				},  
 			},
-			  
 		},
 	]
 }
