@@ -1,5 +1,15 @@
 A fork of xv6 with support for devcontainer.
 
+# Installation
+1. Clone the repository.
+2. Install devcontainer dependencies https://code.visualstudio.com/docs/remote/containers#_installation.
+    * Linux users might need to also do https://docs.docker.com/engine/install/linux-postinstall/.
+3. Open vscode and select File -> open folder.
+4. Select the cloned repository folder.
+5. Press "Reopen in Container".
+6. ???
+7. Profit.
+
 xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.
