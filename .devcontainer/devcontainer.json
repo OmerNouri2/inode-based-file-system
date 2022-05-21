@@ -16,7 +16,6 @@
 	"extensions": [
 		"ms-vscode.cpptools-themes",
 		"ms-vscode.cpptools",
-		"ms-vscode.makefile-tools",
 		"vscode-icons-team.vscode-icons"
 	],
 
