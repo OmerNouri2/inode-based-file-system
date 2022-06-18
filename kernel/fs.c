@@ -431,38 +431,6 @@ bmap(struct inode *ip, uint bn)
   panic("bmap: out of range");
 }
 
-// Truncate inode (discard contents).
-// Caller must hold ip->lock.
-// void
-// itrunc(struct inode *ip)
-// {
-//   int i, j;
-//   struct buf *bp;
-//   uint *a;
-
-//   for(i = 0; i < NDIRECT; i++){
-//     if(ip->addrs[i]){
-//       bfree(ip->dev, ip->addrs[i]);
-//       ip->addrs[i] = 0;
-//     }
-//   }
-
-//   if(ip->addrs[NDIRECT]){
-//     bp = bread(ip->dev, ip->addrs[NDIRECT]);
-//     a = (uint*)bp->data;
-//     for(j = 0; j < NINDIRECT; j++){
-//       if(a[j])
-//         bfree(ip->dev, a[j]);
-//     }
-//     brelse(bp);
-//     bfree(ip->dev, ip->addrs[NDIRECT]);
-//     ip->addrs[NDIRECT] = 0;
-//   }
-
-//   ip->size = 0;
-//   iupdate(ip);
-// }
-
 void
 itrunc(struct inode *ip)
 {
