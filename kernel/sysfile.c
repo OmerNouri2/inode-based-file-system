@@ -252,7 +252,7 @@ create(char *path, short type, short major, short minor)
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+    if((type == T_SYMLINK) || (type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE)))
       return ip;
     iunlockput(ip);
     return 0;
@@ -321,6 +321,58 @@ sys_open(void)
     end_op();
     return -1;
   }
+
+////////
+  if(!(omode & O_NOFOLLOW)) {
+  // Don't treat it as a normal file, look up actual path if T_SYMLINK is set
+  char path[MAXPATH];
+  int len = 0, depth = 0;
+  while(ip->type == T_SYMLINK && depth < 10) {
+    // recursively look up softlinks
+    if(readi(ip, 0, (uint64)&len, 0, sizeof(int)) != sizeof(int)) {
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    
+    if(len > MAXPATH)
+      panic("sys_open: too long pathname\n");
+    
+    if(readi(ip, 0, (uint64)path, sizeof(int), len) != len) {
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    iunlockput(ip);
+    // new soft link, deepen recursion depth
+    if((ip = namei(path)) == 0) {
+      end_op();
+      return -1;
+    }
+    ilock(ip);
+    depth++;
+
+    if(ip->type == T_DIR && omode != O_RDONLY) {
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+
+    if(depth >= 10) {
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+}
+
+
+//////////
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -484,3 +536,72 @@ sys_pipe(void)
   }
   return 0;
 }
+
+
+
+//store the target path of a symbolic link in the inode’s data blocks. 
+//Create a inode of T_SYMLINK type.
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+  
+  begin_op();
+  
+  if((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  int len = strlen(target);
+  if(len > MAXPATH) 
+    panic("sys_symlink: too long pathname\n");
+  // write size of sokt link path first, convenient for readi() to read
+  if(writei(ip, 0, (uint64)&len, 0, sizeof(int)) != sizeof(int)) {
+    end_op();
+    return -1;
+  }
+  if(writei(ip, 0, (uint64)target, sizeof(int), len) != len) {
+    end_op();
+    return -1;
+  }
+  
+  iupdate(ip);
+  iunlockput(ip);
+
+  end_op();
+  return 0;
+
+}
+
+uint64
+sys_readlink(void)
+{
+//   char target[MAXPATH], path[MAXARG];
+//   if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0){
+//     return -1;
+//   }
+//   //printf(“creating a sym link. Target(%s). Path(%s)\n”, target, path);
+
+//   begin_op(ROOTDEV);
+//   struct inode *ip = create(path, T_SYMLINK, 0, 0);
+//   if(ip == 0){
+//     end_op(ROOTDEV);
+//     return -1;
+//   }
+
+//   int len = strlen(target);
+//   writei(ip, 0, (uint64)&len, 0, sizeof(int));
+//   writei(ip, 0, (uint64)target, sizeof(int), len + 1);
+//   iupdate(ip);
+//   iunlockput(ip);
+
+//   end_op(ROOTDEV);
+printf("sys_readlink");
+  return 0;
+}
+

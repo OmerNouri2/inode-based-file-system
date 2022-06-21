@@ -96,30 +96,3 @@ sys_uptime(void)
   return xticks;
 }
 
-
-
-// uint64
-// sys_symlink(void)
-// {
-//   char target[MAXPATH], path[MAXARG];
-//   if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0){
-//     return -1;
-//   }
-//   //printf(“creating a sym link. Target(%s). Path(%s)\n”, target, path);
-
-//   begin_op(ROOTDEV);
-//   struct inode *ip = create(path, T_SYMLINK, 0, 0);
-//   if(ip == 0){
-//     end_op(ROOTDEV);
-//     return -1;
-//   }
-
-//   int len = strlen(target);
-//   writei(ip, 0, (uint64)&len, 0, sizeof(int));
-//   writei(ip, 0, (uint64)target, sizeof(int), len + 1);
-//   iupdate(ip);
-//   iunlockput(ip);
-
-//   end_op(ROOTDEV);
-//   return 0;
-// }
