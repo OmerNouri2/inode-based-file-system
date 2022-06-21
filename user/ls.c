@@ -25,10 +25,14 @@ fmtname(char *path)
 void
 ls(char *path)
 {
-  char buf[512], *p;
+  char buf[512], *p; //, pathname[64];
   int fd;
   struct dirent de;
   struct stat st;
+
+  // if(readlink(path,pathname,64) == 0){//added this to be able to do ls when have some symlink in path
+  //   strcpy(path,pathname);
+  // }
 
   if((fd = open(path, 0)) < 0){
     fprintf(2, "ls: cannot open %s\n", path);
