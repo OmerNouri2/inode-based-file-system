@@ -21,6 +21,8 @@
 #include "buf.h"
 #include "file.h"
 
+
+
 #define min(a, b) ((a) < (b) ? (a) : (b))
 // there should be one superblock per disk device, but we run with
 // only one device
@@ -671,8 +673,9 @@ skipelem(char *path, char *name)
 // If parent != 0, return the inode for the parent and copy the final
 // path element into name, which must have room for DIRSIZ bytes.
 // Must be called inside a transaction since it calls iput().
+
 static struct inode*
-namex(char *path, int nameiparent, char *name)
+namex(char *path, int nameiparent, char *name, int ref)
 {
   struct inode *ip, *next;
 
@@ -683,12 +686,14 @@ namex(char *path, int nameiparent, char *name)
 
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
+    if(!(ip=deref_link(ip,&ref))){
+      return 0;
+    }
     if(ip->type != T_DIR){
       iunlockput(ip);
       return 0;
     }
     if(nameiparent && *path == '\0'){
-      // Stop one level early.
       iunlock(ip);
       return ip;
     }
@@ -706,17 +711,42 @@ namex(char *path, int nameiparent, char *name)
   return ip;
 }
 
-
 struct inode*
 namei(char *path)
 {
   char name[DIRSIZ];
-  return namex(path, 0, name);
+  return namex(path, 0, name, MAX_DEREFERENCE);
 }
 
 
 struct inode*
 nameiparent(char *path, char *name)
 {
-  return namex(path, 1, name);
+  return namex(path, 1, name, MAX_DEREFERENCE);
 }
+
+
+
+struct inode*
+deref_link(struct inode* ip, int* deref){
+  char name[DIRSIZ];
+  char buf[256];
+  struct inode* in = ip;
+
+  while(in->type == T_SYMLINK){
+    *deref = *deref - 1;
+    if(!(*deref)){
+      iunlockput(in);
+      return 0;
+    }
+    readi(in ,0 , (uint64)buf, 0, in->size);
+    iunlockput(in);
+    in = namex(buf, 0, name, *deref);
+    if(!in){
+      return 0;
+    }
+    ilock(in);
+  }
+  return in;
+}
+

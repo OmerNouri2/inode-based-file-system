@@ -16,6 +16,8 @@
 #include "file.h"
 #include "fcntl.h"
 
+#define MAX_DEREFERENCE 31
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -267,10 +269,10 @@ create(char *path, short type, short major, short minor)
   ip->nlink = 1;
   iupdate(ip);
 
-  if(type == T_DIR){  // Create . and .. entries.
-    dp->nlink++;  // for ".."
+  if(type == T_DIR){ 
+    dp->nlink++; 
     iupdate(dp);
-    // No ip->nlink++ for ".": avoid cyclic ref count.
+    
     if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
       panic("create dots");
   }
@@ -282,16 +284,24 @@ create(char *path, short type, short major, short minor)
 
   return ip;
 }
+// version 4.3
+
+
 
 uint64
 sys_open(void)
 {
   char path[MAXPATH];
+  int max_d = MAX_DEREFERENCE;
   int fd, omode;
-  struct file *f;
   struct inode *ip;
   int n;
+  struct file *f;
+  
+  
+  
 
+  //printf("enter open!\n");
   if((n = argstr(0, path, MAXPATH)) < 0 || argint(1, &omode) < 0)
     return -1;
 
@@ -309,7 +319,14 @@ sys_open(void)
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if(ip->type == T_SYMLINK && omode!= O_NOFOLLOW){
+        if ((ip = deref_link(ip, &max_d)) == 0)
+        {
+        end_op();
+        return -1;
+        }
+    }
+    if(ip->type == T_DIR && omode != O_RDONLY && omode!= O_NOFOLLOW){
       iunlockput(ip);
       end_op();
       return -1;
@@ -320,32 +337,6 @@ sys_open(void)
     iunlockput(ip);
     end_op();
     return -1;
-  }
-
-  if ((ip->type == T_SYMLINK) && !(omode & O_NOFOLLOW)){
-    int count = 0;
-    while (ip->type == T_SYMLINK && count < 10) {
-      int len = 0;
-      readi(ip, 0, (uint64)&len, 0, sizeof(int));
-
-      if(len > MAXPATH)
-        panic("open: corrupted symlink inode");
-
-      readi(ip, 0, (uint64)path, sizeof(int), len + 1);
-      iunlockput(ip);
-      if((ip = namei(path)) == 0){
-        end_op();
-        return -1;
-      }
-      ilock(ip);
-      count++;
-    }
-    if (count >= 10) {
-      printf("We got a cycle!\n");
-      iunlockput(ip);
-      end_op();
-      return -1;
-    }
   }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
@@ -376,6 +367,7 @@ sys_open(void)
 
   return fd;
 }
+
 
 uint64
 sys_mkdir(void)
@@ -419,13 +411,35 @@ sys_chdir(void)
   char path[MAXPATH];
   struct inode *ip;
   struct proc *p = myproc();
+  int max_d = MAX_DEREFERENCE;
   
   begin_op();
-  if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){  //namei - Look up and return the inode for a path name.
+  if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){  
     end_op();
     return -1;
   }
   ilock(ip);
+
+
+    int count = 0;
+    while (ip->type == T_SYMLINK && count < max_d) {
+      int len = 0;
+      readi(ip, 0, (uint64)&len, 0, sizeof(int));
+
+      if(len > MAXPATH)
+        panic("open: corrupted symlink inode");
+
+      readi(ip, 0, (uint64)path, sizeof(int), len + 1);
+      iunlockput(ip);
+      if((ip = namei(path)) == 0){
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      count++;
+    }
+    iunlock(ip);
+   
   if(ip->type != T_DIR){
     iunlockput(ip);
     end_op();
@@ -438,99 +452,73 @@ sys_chdir(void)
   return 0;
 }
 
+
 uint64
 sys_exec(void)
 {
   char path[MAXPATH], *argv[MAXARG];
-  int i;
+  int index;
   uint64 uargv, uarg;
 
   if(argstr(0, path, MAXPATH) < 0 || argaddr(1, &uargv) < 0){
     return -1;
   }
-
-  // if ((ip->type == T_SYMLINK) && !(omode & O_NOFOLLOW)){
-  //   int count = 0;
-  //   while (ip->type == T_SYMLINK && count < 10) {
-  //     int len = 0;
-  //     readi(ip, 0, (uint64)&len, 0, sizeof(int));
-
-  //     if(len > MAXPATH)
-  //       panic("open: corrupted symlink inode");
-
-  //     readi(ip, 0, (uint64)path, sizeof(int), len + 1);
-  //     iunlockput(ip);
-  //     if((ip = namei(path)) == 0){
-  //       end_op();
-  //       return -1;
-  //     }
-  //     ilock(ip);
-  //     count++;
-  //   }
-  //   if (count >= 10) {
-  //     printf("We got a cycle!\n");
-  //     iunlockput(ip);
-  //     end_op();
-  //     return -1;
-  //   }
-  // }
-
   memset(argv, 0, sizeof(argv));
-  for(i=0;; i++){
-    if(i >= NELEM(argv)){
+  for(index=0;; index++){
+    if(index >= NELEM(argv)){
       goto bad;
     }
-    if(fetchaddr(uargv+sizeof(uint64)*i, (uint64*)&uarg) < 0){
+    if(fetchaddr(uargv+sizeof(uint64)*index, (uint64*)&uarg) < 0){
       goto bad;
     }
     if(uarg == 0){
-      argv[i] = 0;
+      argv[index] = 0;
       break;
     }
-    argv[i] = kalloc();
-    if(argv[i] == 0)
+    argv[index] = kalloc();
+    if(argv[index] == 0)
       goto bad;
-    if(fetchstr(uarg, argv[i], PGSIZE) < 0)
+    if(fetchstr(uarg, argv[index], PGSIZE) < 0)
       goto bad;
   }
-
+  
   int ret = exec(path, argv);
 
-  for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
-    kfree(argv[i]);
+  for(index = 0; index < NELEM(argv) && argv[index] != 0; index++)
+    kfree(argv[index]);
 
   return ret;
 
  bad:
-  for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
-    kfree(argv[i]);
+  for(index = 0; index < NELEM(argv) && argv[index] != 0; index++)
+    kfree(argv[index]);
   return -1;
 }
 
 uint64
 sys_pipe(void)
 {
-  uint64 fdarray; // user pointer to array of two integers
+  uint64 fdarray; 
   struct file *rf, *wf;
-  int fd0, fd1;
+  int fd_first, fd_sec;
   struct proc *p = myproc();
 
   if(argaddr(0, &fdarray) < 0)
     return -1;
   if(pipealloc(&rf, &wf) < 0)
     return -1;
-  fd0 = -1;
-  if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
-    if(fd0 >= 0)
-      p->ofile[fd0] = 0;
+  fd_first = -1;
+  if((fd_first = fdalloc(rf)) < 0 || (fd_sec = fdalloc(wf)) < 0){
+    if(fd_first >= 0)
+      p->ofile[fd_first] = 0;
     fileclose(rf);
     fileclose(wf);
     return -1;
   }
-  if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
-     copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
-    p->ofile[fd0] = 0;
-    p->ofile[fd1] = 0;
+  if(copyout(p->pagetable, fdarray, (char*)&fd_first, sizeof(fd_first)) < 0 ||
+     copyout(p->pagetable, fdarray+sizeof(fd_first), (char *)&fd_sec, sizeof(fd_sec)) < 0){
+    p->ofile[fd_first] = 0;
+    p->ofile[fd_sec] = 0;
     fileclose(rf);
     fileclose(wf);
     return -1;
@@ -539,143 +527,107 @@ sys_pipe(void)
 }
 
 
-
-//store the target path of a symbolic link in the inode’s data blocks. 
-//Create a inode of T_SYMLINK type.
-uint64 sys_symlink(void)
+uint64
+sys_symlink(void)
 {
-  char target[MAXPATH], path[MAXPATH];
-  //    int fd;
-  struct file *f;
+  char path[MAXPATH];
+  char buf[MAXPATH];
+  memset(buf, 0, sizeof(buf));
+  
+  if(argstr(0, buf, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0){
+    return -1;
+  }
+  
   struct inode *ip;
 
-  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
-    return -1;
   begin_op();
-  ip = create(path, T_SYMLINK, 0, 0);
-  if (ip == 0)
-  {
+  if((ip = create(path, T_SYMLINK, 0, 0)) == 0){
     end_op();
     return -1;
   }
-  ip->symlink = 1;
-  end_op();
 
-  if ((f = filealloc()) == 0)
-  { //|| (fd = fdalloc(f)) < 0){
-    if (f)
-      fileclose(f);
-    iunlockput(ip);
+  if(writei(ip, 0, (uint64)buf, 0, MAXPATH) != MAXPATH){
     return -1;
   }
 
-  //change the inode
-  if (strlen(target) > 50)
-    panic("target soft link path is too long ");
-  safestrcpy((char *)ip->addrs, target, 50);
-  iunlock(ip);
-
-  f->ip = ip;
-  f->off = 0;
-  f->readable = 1; //readable
-  f->writable = 0; //not writable
-
+  iunlockput(ip);
+  end_op();
   return 0;
 }
 
-// uint64
-// sys_symlink(void)
-// {
-//   char target[MAXPATH], path[MAXPATH];
-//   struct inode *ip;
-
-//   if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
-//     return -1;
-  
-//   begin_op();
-  
-//   if((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
-//     end_op();
-//     return -1;
-//   }
-
-//   int len = strlen(target);
-//   if(len > MAXPATH) 
-//     panic("sys_symlink: too long pathname\n");
-//   // write size of sokt link path first, convenient for readi() to read
-//   if(writei(ip, 0, (uint64)&len, 0, sizeof(int)) != sizeof(int)) {
-//     end_op();
-//     return -1;
-//   }
-//   if(writei(ip, 0, (uint64)target, sizeof(int), len) != len) {
-//     end_op();
-//     return -1;
-//   }
-  
-//   iupdate(ip);
-//   iunlockput(ip);
-
-//   end_op();
-//   return 0;
-
-// }
 
 
-
-
-
-uint64 readlink(char *pathname, char *buf, int bufsize)
+int readlink(const char *pathname, char *buf, int bufsize)
 {
-  struct inode *ip; //, *sym_ip;
-                    // int i;
-  if ((ip = namei(pathname)) == 0)
+  struct inode *ip; 
+                  
+  
+  if ((ip = namei((char*)pathname)) == 0)
     return -1;
   ilock(ip);
 
   if (!ip->symlink)
   {
-
+    //printf("111111111111\n");
     iunlock(ip);
     return -1;
   }
 
-
-  // for (i = 0; i < MAX_DEREFERENCE; i++)
-  // {
-  //   if ((sym_ip = namei((char *)ip->addrs)) == 0)
-  //   {
-  //     iunlock(ip);
-  //     return -1;
-  //   }
-  //   if (sym_ip->symlink)
-  //   {
-  //     iunlock(ip);
-  //     ip = sym_ip;
-  //     ilock(ip);
-  //   }
-  //   else
-  //   {
-  //     break; /* found the non-symlink file. last
-  //                                  link in ip. */
-  //   }
-  // }
   if (ip->symlink)
   {
-    safestrcpy(buf, (char *)ip->addrs, bufsize);
+    strncpy(buf, (char*)ip->addrs, bufsize+1);
+
+    struct proc *p = myproc();
+    if(copyout(p->pagetable, (uint64)ip->addrs, buf, bufsize) < 0){      
+     // printf("dddddddddddd : %s\n",buf);
+      iunlock(ip);
+      return -1;
+    }
+    
     iunlock(ip);
+ 
     return 0;
   }
   iunlock(ip);
   return -1;
 }
 
-uint64 sys_readlink(void)
+
+uint64
+sys_readlink(void)
 {
   char pathname[MAXPATH];
-  char buf[MAXPATH];
+  uint64 buf;
   int bufsize;
-  if (argstr(0, pathname, MAXPATH) < 0 || argstr(1, buf, MAXPATH) < 0 || argint(2, &bufsize))
+
+  if(argstr(0,pathname,MAXPATH) < 0 || argaddr(1,&buf) < 0 || argint(2,&bufsize) < 0){
     return -1;
-  else
-    return readlink(pathname, buf, bufsize);
+  }
+  struct inode *ip;
+  begin_op();
+  if ((ip = namei(pathname)) == 0){ 
+    end_op();
+    return -1;
+  }
+  ilock(ip);
+  if (ip->type != T_SYMLINK || ip->size > bufsize){
+    iunlock(ip);
+    end_op();
+    return -1;
+  }
+
+  char buffer[bufsize];
+  int ret = readi(ip, 0, (uint64)buffer, 0, bufsize);
+  struct proc *p = myproc();
+
+  if (copyout(p->pagetable, buf, buffer, bufsize) < 0){
+
+    iunlock(ip);
+    end_op();
+    return -1;
+  }
+  iunlock(ip);
+  //printf("Reached");
+  end_op();
+  return ret;
 }

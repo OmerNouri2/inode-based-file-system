@@ -3,6 +3,7 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+
 char*
 fmtname(char *path)
 {
@@ -17,22 +18,24 @@ fmtname(char *path)
   // Return blank-padded name.
   if(strlen(p) >= DIRSIZ)
     return p;
+  
   memmove(buf, p, strlen(p));
   memset(buf+strlen(p), ' ', DIRSIZ-strlen(p));
+
   return buf;
 }
+
 
 void
 ls(char *path)
 {
-  char buf[512], *p; //, pathname[64];
+  char buf[512], *p; 
+
   int fd;
   struct dirent de;
   struct stat st;
 
-  // if(readlink(path,pathname,64) == 0){//added this to be able to do ls when have some symlink in path
-  //   strcpy(path,pathname);
-  // }
+
 
   if((fd = open(path, 0)) < 0){
     fprintf(2, "ls: cannot open %s\n", path);
@@ -44,10 +47,16 @@ ls(char *path)
     close(fd);
     return;
   }
-
+  
   switch(st.type){
-  case T_FILE:
+
+  case T_FILE: 
     printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
+    break;
+
+  case T_SYMLINK:
+    readlink(path, buf, 512); // write path content to buf
+    printf("%s -> %s %d %d 0\n", fmtname(path), buf, st.type,st.ino);
     break;
 
   case T_DIR:
@@ -64,10 +73,21 @@ ls(char *path)
       memmove(p, de.name, DIRSIZ);
       p[DIRSIZ] = 0;
       if(stat(buf, &st) < 0){
-        printf("ls: cannot stat %s\n", buf);
         continue;
       }
-      printf("%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+      if(st.type == T_SYMLINK){
+        
+      char lbuf[256];
+    
+      readlink(buf,lbuf,256);
+
+      //printf("after %s\n", buf);
+      //  printf("lbuf : %s\n",lbuf);
+        printf("%s -> %s %d %d %d\n",fmtname(buf),(char*)lbuf, st.type,st.ino, st.size);
+      }
+      else{
+        printf("%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+      }
     }
     break;
   }

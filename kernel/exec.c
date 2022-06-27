@@ -7,7 +7,10 @@
 #include "defs.h"
 #include "elf.h"
 
+#define MAX_DEREFERENCE 31
+
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
+
 
 int
 exec(char *path, char **argv)
@@ -20,7 +23,7 @@ exec(char *path, char **argv)
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
-
+  int max_d=MAX_DEREFERENCE ;
   begin_op();
 
   if((ip = namei(path)) == 0){
@@ -28,8 +31,14 @@ exec(char *path, char **argv)
     return -1;
   }
   ilock(ip);
+  struct inode* deref = deref_link(ip, &max_d);
+  if (ip != deref){
+    //enter
+    iunlock(ip);
+    ip = deref;
+  }
 
-  // Check ELF header
+  
   if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
     goto bad;
   if(elf.magic != ELF_MAGIC)
@@ -38,7 +47,7 @@ exec(char *path, char **argv)
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
-  // Load program into memory.
+
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
